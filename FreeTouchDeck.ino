@@ -27,7 +27,7 @@
 
       --- If you use Capacitive touch (GT911 touchscreen) ---
       - TAMCTEC GT911 library (version 1.0.2 or newer), https://github.com/TAMCTec/gt911-arduino -
-      
+        
   The FILESYSTEM (SPI FLASH filing system) is used to hold touch screen calibration data.
   It has to be runs at least once when using resistive touch. After that you can set 
   REPEAT_CAL to false (default).
@@ -47,6 +47,7 @@
 //#define GT911 // Enable this together with USECAPTOUCH to enable support for a GT911 touchscreen
 
 // ------- Set the pins on which the GT911 is connected and the screensize+rotation -------
+// Theres no need to change it if you dont use a gt911 touchscreen
 // Default is for the capative touch version of the ESP3248S035
 #define TOUCH_SDA  33 //33
 #define TOUCH_SCL  32 //32
@@ -60,21 +61,22 @@
 #define SCREEN_WIDTH 480
 #define SCREEN_HEIGHT 320
 
-// ------- If your board is capapble of USB HID you can uncomment this -
-
-//#define USEUSBHID
-
 // ------- Uncomment and populate the following if your cap touch uses custom i2c pins -------
-//#define CUSTOM_TOUCH_SDA 17
-//#define CUSTOM_TOUCH_SCL 18
+//#define CUSTOM_TOUCH_SDA 26
+//#define CUSTOM_TOUCH_SCL 27
+
+// PAY ATTENTION! Even if resistive touch is not used, the TOUCH pin has to be defined!
+// It can be a random unused pin.
+// TODO: Find a way around this!
 
 // ------- Uncomment the define below if you want to use SLEEP and wake up on touch -------
 // The pin where the IRQ from the touch screen is connected uses ESP-style GPIO_NUM_* instead of just pinnumber
 #ifdef GT911
-  #define touchInterruptPin GPIO_NUM_21 //Default for ESP3248S035
+  //#define touchInterruptPin GPIO_NUM_21 //Default for ESP3248S035; doesnt work right now
 #else
-  #define touchInterruptPin GPIO_NUM_27 //Default for ESP32 TOUCHDOWN
+  #define touchInterruptPin GPIO_NUM_27 //Default
 #endif
+
 // ------- Uncomment the define below if you want to use a piezo buzzer and specify the pin where the speaker is connected -------
 //#define speakerPin 26
 
@@ -82,62 +84,44 @@
 // and if you are using the original ESP32-BLE-Keyboard library by T-VK -------
 //#define USE_NIMBLE
 
-// Define the filesystem to be used. For now just SPIFFS.
-#define FILESYSTEM SPIFFS
+const char *versionnumber = "0.9.17";
 
-#include <SPIFFS.h>     // Filesystem support header
-//#include <LittleFS.h>   // Filesystem support header
-
-const char *versionnumber = "0.9.18a";
-
-  /* Version 0.9.18a.
+  /* Version 0.9.16.
    * 
-   * Adding ESP32-S3 support
-   * Trying to add LitteFS Support
-   * Fix #89
-   * Fix #90
+   * Added UserActions. In the UserAction.h file there are a few functions you can define and
+   * select through the configurator. The functions have to written before compiling. These functions 
+   * are then hardcoded. Look at UserActions.h for some examples.
+   * 
+   * Added some missing characters. 
   */
+
+    /* TODO NEXT VERSION
+     *  
+     * - get image height/width and use it in bmp drawing.
+     */
 
 #include <pgmspace.h> // PROGMEM support header
 #include <FS.h>       // Filesystem support header
-  
+#include <SPIFFS.h>   // Filesystem support header
 #include <Preferences.h> // Used to store states before sleep/reboot
 
 #include <TFT_eSPI.h> // The TFT_eSPI library
 
-#if defined(USEUSBHID)
-
-  #include "USB.h"
-  #include "USBHIDKeyboard.h"
-  #include "Keydefines.h"
-  USBHIDKeyboard bleKeyboard;
-  
-#else
-  
-  #include <BleKeyboard.h> // BleKeyboard is used to communicate over BLE
-  BleKeyboard bleKeyboard("FreeTouchDeck", "Made by me");
-
-    // Checking for BLE Keyboard version
-  #ifndef BLE_KEYBOARD_VERSION
-    #warning Old BLE Keyboard version detected. Please update.
-    #define BLE_KEYBOARD_VERSION "Outdated"
-  #endif // !defined(BLE_KEYBOARD_VERSION) 
-  
-#endif // if
+#include <BleKeyboard.h> // BleKeyboard is used to communicate over BLE
 
 #if defined(USE_NIMBLE)
 
-  #include "NimBLEDevice.h"   // Additional BLE functionaity using NimBLE
-  #include "NimBLEUtils.h"    // Additional BLE functionaity using NimBLE
-  #include "NimBLEBeacon.h"   // Additional BLE functionaity using NimBLE
+#include "NimBLEDevice.h"   // Additional BLE functionaity using NimBLE
+#include "NimBLEUtils.h"    // Additional BLE functionaity using NimBLE
+#include "NimBLEBeacon.h"   // Additional BLE functionaity using NimBLE
 
 #else
 
-  #include "BLEDevice.h"   // Additional BLE functionaity
-  #include "BLEUtils.h"    // Additional BLE functionaity
-  #include "BLEBeacon.h"   // Additional BLE functionaity
+#include "BLEDevice.h"   // Additional BLE functionaity
+#include "BLEUtils.h"    // Additional BLE functionaity
+#include "BLEBeacon.h"   // Additional BLE functionaity
 
-#endif // defined(USE_NIMBLE)
+#endif // USE_NIMBLE
 
 #include "esp_sleep.h"   // Additional BLE functionaity
 #include "esp_bt_main.h"   // Additional BLE functionaity
@@ -163,11 +147,16 @@ const char *versionnumber = "0.9.18a";
   #endif
 #endif // defined(USECAPTOUCH)
 
+BleKeyboard bleKeyboard("FreeTouchDeck", "Made by me");
+
 AsyncWebServer webserver(80);
 
 TFT_eSPI tft = TFT_eSPI();
 
 Preferences savedStates;
+
+// Define the storage to be used. For now just SPIFFS.
+#define FILESYSTEM SPIFFS
 
 // This is the file name used to store the calibration data
 // You can change this to create new calibration files.
@@ -324,6 +313,12 @@ char* jsonfilefail = "";
 // Invoke the TFT_eSPI button class and create all the button objects
 TFT_eSPI_Button key[6];
 
+// Checking for BLE Keyboard version
+#ifndef BLE_KEYBOARD_VERSION
+  #warning Old BLE Keyboard version detected. Please update.
+  #define BLE_KEYBOARD_VERSION "Outdated"
+#endif  
+
 //--------- Internal references ------------
 // (this needs to be below all structs etc..)
 #include "ScreenHelper.h"
@@ -385,13 +380,13 @@ void setup()
 #endif
 #endif // defined(USECAPTOUCH)
 
-  // Setup PWM channel and attach pin bl_pin
+  // Setup PWM channel and attach pin 32
   ledcSetup(0, 5000, 8);
 #ifdef TFT_BL
   ledcAttachPin(TFT_BL, 0);
 #else
-  ledcAttachPin(backlightPin, 0);
-#endif // defined(TFT_BL)
+  ledcAttachPin(32, 0);
+#endif
   ledcWrite(0, ledBrightness); // Start @ initial Brightness
 
   // --------------- Init Display -------------------------
@@ -413,17 +408,17 @@ void setup()
 
   if (!FILESYSTEM.begin())
   {
-    Serial.println("[ERROR]: FILESYSTEM initialisation failed!");
-    drawErrorMessage("Failed to init FILESYSTEM! Did you upload the data folder?");
+    Serial.println("[ERROR]: SPIFFS initialisation failed!");
+    drawErrorMessage("Failed to init SPIFFS! Did you upload the data folder?");
     while (1)
       yield(); // We stop here
   }
-  Serial.println("[INFO]: FILESYSTEM initialised.");
+  Serial.println("[INFO]: SPIFFS initialised.");
 
   // Check for free space
 
   Serial.print("[INFO]: Free Space: ");
-  Serial.println(FILESYSTEM.totalBytes() - FILESYSTEM.usedBytes());
+  Serial.println(SPIFFS.totalBytes() - SPIFFS.usedBytes());
 
   //------------------ Load Wifi Config ----------------------------------------------
 
@@ -465,10 +460,8 @@ void setup()
 
 // Calibrate the touch screen and retrieve the scaling factors
 #ifndef USECAPTOUCH
-  Serial.println("[INFO]: Waiting for touch calibration...");
   touch_calibrate();
-  Serial.println("[INFO]: Touch calibration completed!");
-#endif // !defined(USECAPTOUCH)
+#endif
 
   // Let's first check if all the files we need exist
   if (!checkfile("/config/general.json"))
@@ -553,7 +546,7 @@ if(generalconfig.beep){
   ledcWrite(2, 0);
 }
 
-#endif // defined(speakerPin)
+#endif
 
   if(!loadConfig("homescreen")){
     Serial.println("[WARNING]: homescreen.json seems to be corrupted!");
@@ -604,28 +597,12 @@ if(generalconfig.beep){
 
   //------------------BLE Initialization ------------------------------------------------------------------------
 
-#if defined(USEUSBHID)
-
-  // initialize control over the keyboard:
-  bleKeyboard.begin();
-  USB.begin();  
-
-#else
-
   Serial.println("[INFO]: Starting BLE");
   bleKeyboard.begin();
 
-#endif //if defined(USEUSBHID)
-
   // ---------------- Printing version numbers -----------------------------------------------
-  
-#if defined(USEUSBHID)
-  Serial.println("[INFO]: Using USB Keyboard");
-#else
   Serial.print("[INFO]: BLE Keyboard version: ");
   Serial.println(BLE_KEYBOARD_VERSION);
-#endif //if defined(USEUSBHID)
-
   Serial.print("[INFO]: ArduinoJson version: ");
   Serial.println(ARDUINOJSON_VERSION);
   Serial.print("[INFO]: TFT_eSPI version: ");
@@ -651,19 +628,14 @@ if(generalconfig.beep){
     Serial.println(" minutes");
     islatched[28] = 1;
   }
-#endif // defined(touchInterruptPin)
-
-  Serial.println("[INFO]: Boot completed and successful!");
-
+#endif
 }
 
 //--------------------- LOOP ---------------------------------------------------------------------
 
 void loop(void)
 {
-#ifdef GT911
-  ts.read();
-#endif
+  
   // Check if there is data available on the serial input that needs to be handled.
   
   if (Serial.available())
@@ -762,62 +734,9 @@ void loop(void)
   
   if (pageNum == 7)
   {
-      uint16_t t_x = 0, t_y = 0;
-      boolean pressed = false;
 
-    // If pageNum = 7, we are in STA or AP mode.
-    // We no check if the button is pressed, and if so restart.
-#ifdef USECAPTOUCH
-  #ifdef GT911
-    if (ts.isTouched)
-    {
-      for (int i = 0; i < ts.touches; i++) {
-        //Serial.print("Touch "); Serial.print(i + 1); Serial.print(": ");;
-        //Serial.print("  x: "); Serial.print(ts.points[i].x);
-        //Serial.print("  y: "); Serial.print(ts.points[i].y);
-        //Serial.println(' ');
-        //Flip things around so it matches our screen rotation
-        t_x = map(ts.points[i].x, 0, 480, 480, 0);
-        t_y = map(ts.points[i].y, 0, 320, 320, 0);
-      }
-      pressed = true;
-    }
-  #else
-    if (ts.touched())
-    {
-
-      // Retrieve a point
-      TS_Point p = ts.getPoint();
-
-      //Flip things around so it matches our screen rotation
-      p.x = map(p.x, 0, 320, 320, 0);
-      t_y = p.x;
-      t_x = p.y;
-
-      pressed = true;
-    }
-    #endif
-
-#else
-
-    pressed = tft.getTouch(&t_x, &t_y);
-
-#endif // defined(USECAPTOUCH)
-
-    if (pressed)
-    {     
-      // If pressed check if the touch falls within the restart button
-      // drawSingleButton(140, 180, 200, 80, generalconfig.menuButtonColour, TFT_WHITE, "Restart");
-      if (t_x > 140 && t_x < 340){
-        if (t_y > 180 && t_y < 260){
-          // Touch falls within the boundaries of our button so we restart
-          Serial.println("[WARNING]: Restarting");
-          ESP.restart();
-        }
-      }
-
-    }
-
+    // If the pageNum is set to 7, do not draw anything on screen or check for touch
+    // and start handeling incomming web requests.
   }
   else if (pageNum == 8)
   {
@@ -870,7 +789,7 @@ void loop(void)
 
     pressed = tft.getTouch(&t_x, &t_y);
 
-#endif // defined(USECAPTOUCH)
+#endif
 
     if (pressed)
     {     
@@ -890,21 +809,6 @@ void loop(void)
     boolean pressed = false;
 
 #ifdef USECAPTOUCH
-  #ifdef GT911
-    if (ts.isTouched)
-    {
-      for (int i = 0; i < ts.touches; i++) {
-        //Serial.print("Touch "); Serial.print(i + 1); Serial.print(": ");;
-        //Serial.print("  x: "); Serial.print(ts.points[i].x);
-        //Serial.print("  y: "); Serial.print(ts.points[i].y);
-        //Serial.println(' ');
-        //Flip things around so it matches our screen rotation
-        t_x = map(ts.points[i].x, 0, 480, 480, 0);
-        t_y = map(ts.points[i].y, 0, 320, 320, 0);
-      }
-      pressed = true;
-    }
-  #else
     if (ts.touched())
     {
 
@@ -918,13 +822,12 @@ void loop(void)
 
       pressed = true;
     }
-    #endif
 
 #else
 
     pressed = tft.getTouch(&t_x, &t_y);
 
-#endif // defined(USECAPTOUCH)
+#endif
 
     if (pressed)
     {     
@@ -979,7 +882,7 @@ void loop(void)
 
     pressed = tft.getTouch(&t_x, &t_y);
 
-#endif // defined(USECAPTOUCH)
+#endif
 
     if (pressed)
     {     
@@ -1024,7 +927,7 @@ void loop(void)
         ledcDetachPin(speakerPin);
         ledcWrite(2, 0);
         }
-#endif // defined(speakerPin)
+#endif
         Serial.println("[INFO]: Saving latched states");
 
 //        You could uncomment this to see the latch stated before going to sleep
@@ -1040,7 +943,7 @@ void loop(void)
         esp_deep_sleep_start();
       }
     }
-#endif // defined(touchInterruptPin)
+#endif
 
     // Touch coordinates are stored here
     uint16_t t_x = 0, t_y = 0;
@@ -1083,7 +986,7 @@ void loop(void)
 
     pressed = tft.getTouch(&t_x, &t_y);
 
-#endif // defined(USECAPTOUCH)
+#endif
 
     // Check if the X and Y coordinates of the touch are within one of our buttons
     for (uint8_t b = 0; b < 6; b++)
