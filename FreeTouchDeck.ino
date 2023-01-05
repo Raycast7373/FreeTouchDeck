@@ -634,6 +634,9 @@ void loop(void) {
     OffsetLast = iLastLightLevel + AutoOffset;
     iLastBrightness = iLastLightLevel * 0.25;
 #endif
+    if (iNewLightLevel > 1024){
+        iNewLightLevel = 1024;
+    }
     iLastLightLevel = iNewLightLevel;
     OffsetLightLevel = 255 - iNewLightLevel / 4;
     //ConvertedLightLevel = OffsetLightLevel * 0.25;  // 0.2490234375
